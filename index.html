@@ -262,7 +262,7 @@ let accessToken = null, driveFileId = null, saveTimeout = null;
 
 // ─── GOOGLE AUTH ──────────────────────────────────────────────────────────
 function signIn() {
-  if (GOOGLE_CLIENT_ID === '907055001230-pscndmhf3rjbivs1l58fpths2qqnvv24.apps.googleusercontent.com') {
+  if (GOOGLE_CLIENT_ID === 'YOUR_CLIENT_ID_HERE') {
     document.getElementById('gauth-error').textContent = 'Please add your Google Client ID to the app first. See the setup instructions in the code.';
     return;
   }
@@ -290,7 +290,7 @@ async function tryRestoreSession() {
   const token = localStorage.getItem('tc_token');
   const expiry = parseInt(localStorage.getItem('tc_token_expiry') || '0');
   if (token && Date.now() < expiry - 60000) { accessToken = token; await loadFromDrive(); return true; }
-  if (GOOGLE_CLIENT_ID !== '907055001230-pscndmhf3rjbivs1l58fpths2qqnvv24.apps.googleusercontent.com') {
+  if (GOOGLE_CLIENT_ID !== 'YOUR_CLIENT_ID_HERE') {
     try {
       await new Promise((resolve, reject) => {
         const client = google.accounts.oauth2.initTokenClient({
@@ -814,7 +814,7 @@ window.addEventListener('load', () => {
   const checkGIS = setInterval(() => {
     if (typeof google !== 'undefined' && google.accounts) {
       clearInterval(checkGIS);
-      if (GOOGLE_CLIENT_ID !== '907055001230-pscndmhf3rjbivs1l58fpths2qqnvv24.apps.googleusercontent.com') {
+      if (GOOGLE_CLIENT_ID !== 'YOUR_CLIENT_ID_HERE') {
         tryRestoreSession().then(ok => { if (!ok) showScreen('screen-gauth'); });
       } else {
         try { const ls=localStorage.getItem('tc_staff'); if(ls) staff=JSON.parse(ls); } catch(e) {}
