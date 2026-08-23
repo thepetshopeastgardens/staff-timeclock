@@ -249,7 +249,7 @@
 <script src="https://accounts.google.com/gsi/client" async></script>
 <script>
 // ─── CONFIG ────────────────────────────────────────────────────────────────
-const GOOGLE_CLIENT_ID = 'YOUR_CLIENT_ID_HERE';
+const GOOGLE_CLIENT_ID = '907055001230-pscndmhf3rjbivs1l58fpths2qqnvv24.apps.googleusercontent.com';
 const DRIVE_FILE_NAME = 'timeclock-data.json';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const PIN = 'manager';
@@ -262,7 +262,7 @@ let accessToken = null, driveFileId = null, saveTimeout = null;
 
 // ─── GOOGLE AUTH ──────────────────────────────────────────────────────────
 function signIn() {
-  if (GOOGLE_CLIENT_ID === 'YOUR_CLIENT_ID_HERE') {
+  if (GOOGLE_CLIENT_ID === '907055001230-pscndmhf3rjbivs1l58fpths2qqnvv24.apps.googleusercontent.com') {
     document.getElementById('gauth-error').textContent = 'Please add your Google Client ID to the app first. See the setup instructions in the code.';
     return;
   }
@@ -290,7 +290,7 @@ async function tryRestoreSession() {
   const token = localStorage.getItem('tc_token');
   const expiry = parseInt(localStorage.getItem('tc_token_expiry') || '0');
   if (token && Date.now() < expiry - 60000) { accessToken = token; await loadFromDrive(); return true; }
-  if (GOOGLE_CLIENT_ID !== 'YOUR_CLIENT_ID_HERE') {
+  if (GOOGLE_CLIENT_ID !== '907055001230-pscndmhf3rjbivs1l58fpths2qqnvv24.apps.googleusercontent.com') {
     try {
       await new Promise((resolve, reject) => {
         const client = google.accounts.oauth2.initTokenClient({
@@ -814,7 +814,7 @@ window.addEventListener('load', () => {
   const checkGIS = setInterval(() => {
     if (typeof google !== 'undefined' && google.accounts) {
       clearInterval(checkGIS);
-      if (GOOGLE_CLIENT_ID !== 'YOUR_CLIENT_ID_HERE') {
+      if (GOOGLE_CLIENT_ID !== '907055001230-pscndmhf3rjbivs1l58fpths2qqnvv24.apps.googleusercontent.com') {
         tryRestoreSession().then(ok => { if (!ok) showScreen('screen-gauth'); });
       } else {
         try { const ls=localStorage.getItem('tc_staff'); if(ls) staff=JSON.parse(ls); } catch(e) {}
