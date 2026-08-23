@@ -265,10 +265,10 @@ function signIn() {
     document.getElementById('gauth-error').textContent = 'Please add your Google Client ID to the app first.';
     return;
   }
-  // Use redirect flow instead of popup to avoid Cross-Origin-Opener-Policy issues
+  const redirectUri = 'https://thepetshopeastgardens.github.io/staff-timeclock/';
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
-    redirect_uri: window.location.origin + window.location.pathname,
+    redirect_uri: redirectUri,
     response_type: 'token',
     scope: DRIVE_SCOPE,
     include_granted_scopes: 'true',
