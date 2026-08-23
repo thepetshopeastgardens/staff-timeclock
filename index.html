@@ -263,20 +263,34 @@ let accessToken = null, driveFileId = null, saveTimeout = null;
 // ─── GOOGLE AUTH ──────────────────────────────────────────────────────────
 function signIn() {
   if (GOOGLE_CLIENT_ID === 'YOUR_CLIENT_ID_HERE') {
-    document.getElementById('gauth-error').textContent = 'Please add your Google Client ID to the app first. See the setup instructions in the code.';
+    document.getElementById('gauth-error').textContent = 'Please add your Google Client ID to the app first.';
     return;
   }
-  const client = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID, scope: DRIVE_SCOPE,
-    callback: async (response) => {
-      if (response.error) { document.getElementById('gauth-error').textContent = 'Sign-in failed: ' + response.error; return; }
-      accessToken = response.access_token;
-      localStorage.setItem('tc_token', accessToken);
-      localStorage.setItem('tc_token_expiry', Date.now() + (response.expires_in * 1000));
-      await loadFromDrive();
-    }
-  });
-  client.requestAccessToken();
+  document.getElementById('gauth-error').textContent = 'Signing in...';
+  try {
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: DRIVE_SCOPE,
+      prompt: 'consent',
+      callback: async (response) => {
+        if (response.error) {
+          document.getElementById('gauth-error').textContent = 'Sign-in failed: ' + response.error + '. Please try again.';
+          return;
+        }
+        accessToken = response.access_token;
+        localStorage.setItem('tc_token', accessToken);
+        localStorage.setItem('tc_token_expiry', Date.now() + (response.expires_in * 1000));
+        document.getElementById('gauth-error').textContent = 'Signed in! Loading data...';
+        await loadFromDrive();
+      },
+      error_callback: (err) => {
+        document.getElementById('gauth-error').textContent = 'Sign-in error: ' + (err.message || err.type || 'unknown error');
+      }
+    });
+    client.requestAccessToken();
+  } catch(e) {
+    document.getElementById('gauth-error').textContent = 'Error: ' + e.message;
+  }
 }
 
 function signOut() {
@@ -289,25 +303,12 @@ function signOut() {
 async function tryRestoreSession() {
   const token = localStorage.getItem('tc_token');
   const expiry = parseInt(localStorage.getItem('tc_token_expiry') || '0');
-  if (token && Date.now() < expiry - 60000) { accessToken = token; await loadFromDrive(); return true; }
-  if (GOOGLE_CLIENT_ID !== 'YOUR_CLIENT_ID_HERE') {
-    try {
-      await new Promise((resolve, reject) => {
-        const client = google.accounts.oauth2.initTokenClient({
-          client_id: GOOGLE_CLIENT_ID, scope: DRIVE_SCOPE, prompt: '',
-          callback: async (response) => {
-            if (response.error) { reject(response.error); return; }
-            accessToken = response.access_token;
-            localStorage.setItem('tc_token', accessToken);
-            localStorage.setItem('tc_token_expiry', Date.now() + (response.expires_in * 1000));
-            resolve();
-          }
-        });
-        client.requestAccessToken();
-      });
-      await loadFromDrive(); return true;
-    } catch(e) {}
+  if (token && Date.now() < expiry - 60000) {
+    accessToken = token;
+    await loadFromDrive();
+    return true;
   }
+  // Don't attempt silent refresh — just show sign-in screen
   return false;
 }
 
@@ -324,6 +325,7 @@ async function loadFromDrive() {
   setSyncStatus('saving', 'Loading from Drive...');
   try {
     const res1 = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${DRIVE_FILE_NAME}'+and+trashed=false&fields=files(id)&spaces=drive`, { headers: { 'Authorization': 'Bearer ' + accessToken } });
+    if (!res1.ok) throw new Error('Drive list failed: ' + res1.status + ' ' + await res1.text());
     const list = await res1.json();
     if (list.files && list.files.length > 0) {
       driveFileId = list.files[0].id;
@@ -343,6 +345,9 @@ async function loadFromDrive() {
     setSyncStatus('ok', 'Synced with Google Drive');
     initApp();
   } catch(err) {
+    // Show the error on screen so we can diagnose
+    const errEl = document.getElementById('gauth-error');
+    if (errEl) errEl.textContent = 'Drive error: ' + err.message;
     setSyncStatus('error', 'Sync error — using local data');
     try { const ls = localStorage.getItem('tc_staff'); if (ls) staff = JSON.parse(ls); } catch(e) {}
     try { const le = localStorage.getItem('tc_entries'); if (le) entries = JSON.parse(le); } catch(e) {}
