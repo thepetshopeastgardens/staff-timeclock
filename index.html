@@ -330,15 +330,17 @@ async function loadFromDrive() {
     if (list.files && list.files.length > 0) {
       driveFileId = list.files[0].id;
       const res2 = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`, { headers: { 'Authorization': 'Bearer ' + accessToken } });
+      if (!res2.ok) throw new Error('Drive read failed: ' + res2.status);
       const data = await res2.json();
       staff = data.staff || []; entries = data.entries || []; dayBreaks = data.dayBreaks || {};
     } else {
-      // Migrate from localStorage if exists
+      // No file yet — load from localStorage as fallback for first-time migration
       try { const ls = localStorage.getItem('tc_staff'); if (ls) staff = JSON.parse(ls); } catch(e) {}
       try { const le = localStorage.getItem('tc_entries'); if (le) entries = JSON.parse(le); } catch(e) {}
       try { const lb = localStorage.getItem('tc_daybreaks'); if (lb) dayBreaks = JSON.parse(lb); } catch(e) {}
       if (!staff.length) staff = [{name:'Max',active:true},{name:'Amy',active:true},{name:'Kayden',active:true},{name:'Samara',active:true},{name:'Tamika',active:true}];
-      await writeToDrive();
+      // Create Drive file in background — don't await so it doesn't block initApp
+      writeToDrive().catch(e => console.warn('Initial Drive write failed:', e));
     }
     // Normalise old entries that used .break boolean → .breaks count
     entries.forEach(e => { if (e.breaks === undefined) e.breaks = (e.break ? 1 : 0); });
