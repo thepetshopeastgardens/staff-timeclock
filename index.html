@@ -323,6 +323,18 @@ function setSyncStatus(state, text) {
 
 async function loadFromDrive() {
   setSyncStatus('saving', 'Loading from Drive...');
+
+  // Safety net — if loading takes more than 8 seconds, load anyway with local data
+  const timeout = setTimeout(() => {
+    const errEl = document.getElementById('gauth-error');
+    if (errEl) errEl.textContent = 'Drive timed out — loading with local data.';
+    try { const ls = localStorage.getItem('tc_staff'); if (ls) staff = JSON.parse(ls); } catch(e) {}
+    try { const le = localStorage.getItem('tc_entries'); if (le) entries = JSON.parse(le); } catch(e) {}
+    try { const lb = localStorage.getItem('tc_daybreaks'); if (lb) dayBreaks = JSON.parse(lb); } catch(e) {}
+    if (!staff.length) staff = [{name:'Max',active:true},{name:'Amy',active:true},{name:'Kayden',active:true},{name:'Samara',active:true},{name:'Tamika',active:true}];
+    setSyncStatus('error', 'Drive timed out — using local data');
+    initApp();
+  }, 8000);
   try {
     const res1 = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${DRIVE_FILE_NAME}'+and+trashed=false&fields=files(id)&spaces=drive`, { headers: { 'Authorization': 'Bearer ' + accessToken } });
     if (!res1.ok) throw new Error('Drive list failed: ' + res1.status + ' ' + await res1.text());
@@ -344,9 +356,11 @@ async function loadFromDrive() {
     }
     // Normalise old entries that used .break boolean → .breaks count
     entries.forEach(e => { if (e.breaks === undefined) e.breaks = (e.break ? 1 : 0); });
+    clearTimeout(timeout);
     setSyncStatus('ok', 'Synced with Google Drive');
     initApp();
   } catch(err) {
+    clearTimeout(timeout);
     // Show the error on screen so we can diagnose
     const errEl = document.getElementById('gauth-error');
     if (errEl) errEl.textContent = 'Drive error: ' + err.message;
