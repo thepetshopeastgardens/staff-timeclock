@@ -246,7 +246,6 @@
   </div>
 </div>
 
-<script src="https://accounts.google.com/gsi/client" async></script>
 <script>
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const GOOGLE_CLIENT_ID = '907055001230-pscndmhf3rjbivs1l58fpths2qqnvv24.apps.googleusercontent.com';
@@ -266,37 +265,26 @@ function signIn() {
     document.getElementById('gauth-error').textContent = 'Please add your Google Client ID to the app first.';
     return;
   }
-  document.getElementById('gauth-error').textContent = 'Signing in...';
-  try {
-    const client = google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: DRIVE_SCOPE,
-      prompt: 'consent',
-      callback: async (response) => {
-        if (response.error) {
-          document.getElementById('gauth-error').textContent = 'Sign-in failed: ' + response.error + '. Please try again.';
-          return;
-        }
-        accessToken = response.access_token;
-        localStorage.setItem('tc_token', accessToken);
-        localStorage.setItem('tc_token_expiry', Date.now() + (response.expires_in * 1000));
-        document.getElementById('gauth-error').textContent = 'Signed in! Loading data...';
-        await loadFromDrive();
-      },
-      error_callback: (err) => {
-        document.getElementById('gauth-error').textContent = 'Sign-in error: ' + (err.message || err.type || 'unknown error');
-      }
-    });
-    client.requestAccessToken();
-  } catch(e) {
-    document.getElementById('gauth-error').textContent = 'Error: ' + e.message;
-  }
+  // Use redirect flow instead of popup to avoid Cross-Origin-Opener-Policy issues
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: window.location.origin + window.location.pathname,
+    response_type: 'token',
+    scope: DRIVE_SCOPE,
+    include_granted_scopes: 'true',
+    state: 'signin'
+  });
+  window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
 }
 
 function signOut() {
-  if (accessToken) google.accounts.oauth2.revoke(accessToken, () => {});
+  if (accessToken) {
+    fetch('https://oauth2.googleapis.com/revoke?token=' + accessToken, { method: 'POST' }).catch(()=>{});
+  }
   accessToken = null; driveFileId = null;
   localStorage.removeItem('tc_token'); localStorage.removeItem('tc_token_expiry');
+  // Clear hash from URL
+  history.replaceState(null, '', window.location.pathname);
   showScreen('screen-gauth');
 }
 
@@ -308,7 +296,25 @@ async function tryRestoreSession() {
     await loadFromDrive();
     return true;
   }
-  // Don't attempt silent refresh — just show sign-in screen
+  return false;
+}
+
+// Handle redirect back from Google with access token in URL hash
+function handleAuthRedirect() {
+  const hash = window.location.hash.substring(1);
+  if (!hash) return false;
+  const params = new URLSearchParams(hash);
+  const token = params.get('access_token');
+  const expiresIn = params.get('expires_in');
+  const state = params.get('state');
+  if (token && state === 'signin') {
+    accessToken = token;
+    localStorage.setItem('tc_token', token);
+    localStorage.setItem('tc_token_expiry', Date.now() + (parseInt(expiresIn) * 1000));
+    // Clean the token out of the URL bar
+    history.replaceState(null, '', window.location.pathname);
+    return true;
+  }
   return false;
 }
 
@@ -821,33 +827,31 @@ async function pollDrive() {
 
 // Poll every 30 seconds
 setInterval(pollDrive, 30000);
-
-// Also poll immediately when the window regains focus
-// (covers switching tabs or coming back to the browser)
 window.addEventListener('focus', pollDrive);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pollDrive(); });
 
-// Also poll on visibility change (e.g. phone screen unlock, tab switch)
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') pollDrive();
-});
+window.addEventListener('load', async () => {
+  // Check if returning from Google OAuth redirect
+  const fromRedirect = handleAuthRedirect();
 
-window.addEventListener('load', () => {
-  const checkGIS = setInterval(() => {
-    if (typeof google !== 'undefined' && google.accounts) {
-      clearInterval(checkGIS);
-      if (GOOGLE_CLIENT_ID !== 'YOUR_CLIENT_ID_HERE') {
-        tryRestoreSession().then(ok => { if (!ok) showScreen('screen-gauth'); });
-      } else {
-        try { const ls=localStorage.getItem('tc_staff'); if(ls) staff=JSON.parse(ls); } catch(e) {}
-        try { const le=localStorage.getItem('tc_entries'); if(le) entries=JSON.parse(le); } catch(e) {}
-        try { const lb=localStorage.getItem('tc_daybreaks'); if(lb) dayBreaks=JSON.parse(lb); } catch(e) {}
-        entries.forEach(e=>{if(e.breaks===undefined)e.breaks=(e.break?1:0);});
-        if(!staff.length) staff=[{name:'Max',active:true},{name:'Amy',active:true},{name:'Kayden',active:true},{name:'Samara',active:true},{name:'Tamika',active:true}];
-        setSyncStatus('orange','Running in local-only mode (no Google Client ID set)');
-        initApp();
-      }
-    }
-  }, 100);
+  if (GOOGLE_CLIENT_ID === 'YOUR_CLIENT_ID_HERE') {
+    try { const ls=localStorage.getItem('tc_staff'); if(ls) staff=JSON.parse(ls); } catch(e) {}
+    try { const le=localStorage.getItem('tc_entries'); if(le) entries=JSON.parse(le); } catch(e) {}
+    try { const lb=localStorage.getItem('tc_daybreaks'); if(lb) dayBreaks=JSON.parse(lb); } catch(e) {}
+    entries.forEach(e=>{if(e.breaks===undefined)e.breaks=(e.break?1:0);});
+    if(!staff.length) staff=[{name:'Max',active:true},{name:'Amy',active:true},{name:'Kayden',active:true},{name:'Samara',active:true},{name:'Tamika',active:true}];
+    setSyncStatus('orange','Running in local-only mode (no Google Client ID set)');
+    initApp();
+    return;
+  }
+
+  if (fromRedirect) {
+    await loadFromDrive();
+    return;
+  }
+
+  const restored = await tryRestoreSession();
+  if (!restored) showScreen('screen-gauth');
 });
 </script>
 </body>
