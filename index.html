@@ -227,70 +227,63 @@
 const GOOGLE_CLIENT_ID = '907055001230-pscndmhf3rjbivs1l58fpths2qqnvv24.apps.googleusercontent.com';
 const DRIVE_FILE_NAME  = 'timeclock-data.json';
 const PIN = 'manager';
+const APP_URL = 'https://staff-timeclock.pages.dev/';
 // ──────────────────────────────────────────────────────────────────────────
 
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 let staff=[], entries=[], dayBreaks={}, editingId=null;
 let currentWeekMonday=getWeekMonday(new Date());
 let entriesWeekMonday=getWeekMonday(new Date());
 let accessToken=null, driveFileId=null, saveTimeout=null;
-let tokenClient=null;
 
-// ─── AUTH — uses GIS token client with proper callback ────────────────────
-function initGoogleAuth() {
-  if (GOOGLE_CLIENT_ID === 'YOUR_CLIENT_ID_HERE') return;
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: DRIVE_SCOPE,
-    callback: async (resp) => {
-      if (resp.error) {
-        setStatus('error', resp.error);
-        document.getElementById('gauth-error').textContent = 'Sign-in failed: ' + resp.error;
-        document.getElementById('signin-btn').disabled = false;
-        document.getElementById('signin-btn').textContent = 'Sign in with Google';
-        return;
-      }
-      accessToken = resp.access_token;
-      localStorage.setItem('tc_token', accessToken);
-      localStorage.setItem('tc_token_expiry', Date.now() + resp.expires_in * 1000);
-      document.getElementById('gauth-status').textContent = 'Signed in! Loading data...';
-      await loadFromDrive();
-    },
-    error_callback: (err) => {
-      document.getElementById('gauth-error').textContent = 'Error: ' + (err.message || err.type || JSON.stringify(err));
-      document.getElementById('signin-btn').disabled = false;
-    }
-  });
-}
-
+// ─── AUTH — redirect flow (no popup, works on all hosts) ─────────────────
 function signIn() {
   if (GOOGLE_CLIENT_ID === 'YOUR_CLIENT_ID_HERE') {
     document.getElementById('gauth-error').textContent = 'Please add your Google Client ID first.';
     return;
   }
-  document.getElementById('gauth-status').textContent = 'Opening Google sign-in...';
-  document.getElementById('gauth-error').textContent = '';
-  document.getElementById('signin-btn').disabled = true;
-  tokenClient.requestAccessToken({ prompt: 'consent' });
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: APP_URL,
+    response_type: 'token',
+    scope: 'https://www.googleapis.com/auth/drive.file',
+    include_granted_scopes: 'true',
+    state: 'signin'
+  });
+  window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
 }
 
 function signOut() {
-  if (accessToken) google.accounts.oauth2.revoke(accessToken, ()=>{});
+  if (accessToken) fetch('https://oauth2.googleapis.com/revoke?token='+accessToken, {method:'POST'}).catch(()=>{});
   accessToken=null; driveFileId=null;
   localStorage.removeItem('tc_token'); localStorage.removeItem('tc_token_expiry');
-  document.getElementById('gauth-status').textContent = '';
-  document.getElementById('gauth-error').textContent = '';
-  document.getElementById('signin-btn').disabled = false;
+  history.replaceState(null,'',window.location.pathname);
   showScreen('screen-gauth');
 }
 
 async function tryRestoreSession() {
-  const token  = localStorage.getItem('tc_token');
-  const expiry = parseInt(localStorage.getItem('tc_token_expiry')||'0');
-  if (token && Date.now() < expiry - 60000) {
-    accessToken = token;
-    document.getElementById('gauth-status').textContent = 'Restoring session...';
+  const token=localStorage.getItem('tc_token');
+  const expiry=parseInt(localStorage.getItem('tc_token_expiry')||'0');
+  if (token && Date.now() < expiry-60000) {
+    accessToken=token;
+    document.getElementById('gauth-status').textContent='Restoring session...';
     await loadFromDrive();
+    return true;
+  }
+  return false;
+}
+
+function handleAuthRedirect() {
+  const hash=window.location.hash.substring(1);
+  if (!hash) return false;
+  const params=new URLSearchParams(hash);
+  const token=params.get('access_token');
+  const expiresIn=params.get('expires_in');
+  const state=params.get('state');
+  if (token && state==='signin') {
+    accessToken=token;
+    localStorage.setItem('tc_token',token);
+    localStorage.setItem('tc_token_expiry',Date.now()+(parseInt(expiresIn)*1000));
+    history.replaceState(null,'',window.location.pathname);
     return true;
   }
   return false;
@@ -702,25 +695,24 @@ setInterval(pollDrive,30000);
 window.addEventListener('focus',pollDrive);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pollDrive();});
 
-// Wait for Google Identity Services to load
-window.addEventListener('load',()=>{
-  if(GOOGLE_CLIENT_ID==='YOUR_CLIENT_ID_HERE'){
+window.addEventListener('load', async () => {
+  if (GOOGLE_CLIENT_ID==='YOUR_CLIENT_ID_HERE') {
     loadLocalFallback();
     setSyncStatus('orange','Local-only mode — add Client ID for Drive sync');
     initApp();
     return;
   }
-  const check=setInterval(()=>{
-    if(typeof google!=='undefined'&&google.accounts&&google.accounts.oauth2){
-      clearInterval(check);
-      initGoogleAuth();
-      tryRestoreSession().then(ok=>{ if(!ok) showScreen('screen-gauth'); });
-    }
-  },100);
+  // Check if returning from Google OAuth redirect
+  const fromRedirect = handleAuthRedirect();
+  if (fromRedirect) {
+    document.getElementById('gauth-status').textContent = 'Signed in! Loading data...';
+    await loadFromDrive();
+    return;
+  }
+  // Try to restore saved session
+  const restored = await tryRestoreSession();
+  if (!restored) showScreen('screen-gauth');
 });
 </script>
-
-<!-- Google Identity Services — loaded last so it doesn't block the page -->
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 </body>
 </html>
