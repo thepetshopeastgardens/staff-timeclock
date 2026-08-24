@@ -368,7 +368,7 @@ async function writeToDrive() {
 function saveData() {
   setSyncStatus('saving','Saving...');
   clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(writeToDrive, 800);
+  saveTimeout = setTimeout(()=>{ saveTimeout=null; writeToDrive(); }, 800);
 }
 
 async function pollDrive() {
