@@ -16,7 +16,8 @@
     --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
   body { font-family: var(--font); background: var(--bg3); color: var(--text); min-height: 100vh; }
-  .screen { display: none; } .screen.active { display: block; }
+  .screen { display: none !important; } .screen.active { display: block !important; }
+  #screen-gauth.active { display: flex !important; }
   .btn { cursor: pointer; border: 0.5px solid var(--border2); background: var(--bg); color: var(--text); border-radius: var(--radius); padding: 10px 18px; font-size: 14px; font-weight: 500; font-family: var(--font); transition: background 0.15s; }
   .btn:hover { background: var(--bg2); }
   .btn-primary { background: var(--green); color: #fff; border-color: var(--green-dark); } .btn-primary:hover { background: var(--green-dark); }
@@ -69,7 +70,7 @@
 <body>
 
 <!-- AUTH SCREEN -->
-<div id="screen-gauth" class="screen active">
+<div id="screen-gauth" class="screen active" style="min-height:100vh;display:flex;align-items:center;justify-content:center;">
   <div class="gauth-card">
     <div class="gauth-icon">🕐</div>
     <div class="gauth-title">Staff Time Clock</div>
@@ -227,7 +228,7 @@
 const GOOGLE_CLIENT_ID = '907055001230-pscndmhf3rjbivs1l58fpths2qqnvv24.apps.googleusercontent.com';
 const DRIVE_FILE_NAME  = 'timeclock-data.json';
 const PIN = 'manager';
-const APP_URL = 'https://staff-timeclock.thepetshopeastgardens.workers.dev/';
+const APP_URL = 'https://staff-timeclock.pages.dev/';
 // ──────────────────────────────────────────────────────────────────────────
 
 let staff=[], entries=[], dayBreaks={}, editingId=null;
