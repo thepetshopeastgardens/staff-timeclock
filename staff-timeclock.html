@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Staff Time Clock</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #ffffff; --bg2: #f5f5f3; --bg3: #ebebea;
+    --text: #1a1a18; --text2: #6b6b67;
+    --border: rgba(0,0,0,0.12); --border2: rgba(0,0,0,0.22);
+    --green: #1D9E75; --green-dark: #0F6E56; --green-light: #E1F5EE; --green-text: #085041;
+    --red: #E24B4A; --red-dark: #A32D2D;
+    --radius: 8px; --radius-lg: 12px;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  body { font-family: var(--font); background: var(--bg3); color: var(--text); min-height: 100vh; }
+  .screen { display: none !important; } .screen.active { display: block !important; }
+  #screen-gauth.active { display: flex !important; }
+  .btn { cursor: pointer; border: 0.5px solid var(--border2); background: var(--bg); color: var(--text); border-radius: var(--radius); padding: 10px 18px; font-size: 14px; font-weight: 500; font-family: var(--font); transition: background 0.15s; }
+  .btn:hover { background: var(--bg2); }
+  .btn-primary { background: var(--green); color: #fff; border-color: var(--green-dark); } .btn-primary:hover { background: var(--green-dark); }
+  .btn-danger { background: var(--red); color: #fff; border-color: var(--red-dark); } .btn-danger:hover { background: var(--red-dark); }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+  input, select { border: 0.5px solid var(--border2); background: var(--bg); color: var(--text); border-radius: var(--radius); padding: 7px 10px; font-size: 13px; font-family: var(--font); }
+  input:focus, select:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 2px rgba(29,158,117,0.15); }
+  .break-btn { cursor: pointer; border: 0.5px solid var(--border2); background: var(--bg2); color: var(--text); border-radius: var(--radius); padding: 3px 10px; font-size: 13px; font-family: var(--font); transition: background 0.15s; }
+  .break-btn:hover { background: var(--bg); } .break-btn:disabled { opacity: 0.35; cursor: default; }
+  .page { max-width: 720px; margin: 0 auto; padding: 2rem 1rem; }
+  .card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 12px; overflow: hidden; }
+  .card-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 0.5px solid var(--border); background: var(--bg2); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { font-weight: 500; color: var(--text2); padding: 7px 10px; border-bottom: 0.5px solid var(--border); }
+  td { padding: 7px 10px; border-bottom: 0.5px solid var(--border); }
+  .text-right { text-align: right; } .text-center { text-align: center; } .text-muted { color: var(--text2); } .text-red { color: var(--red); } .fw-500 { font-weight: 500; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 1.25rem; }
+  .topbar-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .badge { font-size: 11px; padding: 3px 8px; border-radius: var(--radius); }
+  .badge-active { background: var(--green-light); color: var(--green-text); } .badge-inactive { background: var(--bg2); color: var(--text2); }
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; align-items: center; justify-content: center; padding: 1rem; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; width: 100%; max-width: 360px; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+  .form-label { font-size: 12px; color: var(--text2); }
+  .form-row { display: flex; gap: 8px; } .form-row .form-group { flex: 1; }
+  .time-stepper { border: 0.5px solid var(--border2); border-radius: var(--radius); overflow: hidden; background: var(--bg); }
+  .stepper-display { display: flex; align-items: center; justify-content: center; padding: 8px 4px; gap: 2px; background: var(--bg2); }
+  .step-val { font-size: 22px; font-weight: 500; min-width: 40px; text-align: center; letter-spacing: 1px; }
+  .step-sep { font-size: 20px; font-weight: 300; color: var(--text2); padding: 0 2px; }
+  .stepper-row { display: flex; }
+  .stepper-row button { flex: 1; border: none; background: var(--bg); color: var(--text2); padding: 5px; font-size: 12px; cursor: pointer; font-family: var(--font); border-bottom: 0.5px solid var(--border); transition: background 0.1s; }
+  .stepper-row:last-of-type button { border-bottom: none; border-top: 0.5px solid var(--border); }
+  .stepper-row button:first-child { border-right: 0.5px solid var(--border); }
+  .stepper-row button:hover { background: var(--bg2); color: var(--text); }
+  .seg-row td { background: var(--bg); } .seg-row:hover td { background: var(--bg2); }
+  #screen-gauth { display:flex; align-items:center; justify-content:center; min-height:100vh; }
+  .gauth-card { background:var(--bg); border-radius:var(--radius-lg); border:0.5px solid var(--border); padding:2.5rem 2rem; text-align:center; max-width:400px; width:100%; }
+  .gauth-icon { font-size:48px; margin-bottom:1rem; }
+  .gauth-title { font-size:20px; font-weight:500; margin-bottom:8px; }
+  .gauth-sub { font-size:13px; color:var(--text2); margin-bottom:1.5rem; line-height:1.6; }
+  .google-btn { display:inline-flex; align-items:center; gap:10px; background:#fff; border:1px solid #dadce0; border-radius:4px; padding:10px 20px; font-size:14px; font-family:var(--font); font-weight:500; color:#3c4043; cursor:pointer; transition:box-shadow 0.15s; }
+  .google-btn:hover { box-shadow:0 1px 3px rgba(0,0,0,0.2); }
+  .google-btn svg { width:18px; height:18px; }
+  .sync-bar { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text2); padding:4px 0; }
+  .sync-dot { width:7px; height:7px; border-radius:50%; background:var(--text2); flex-shrink:0; }
+  .sync-dot.green { background:var(--green); } .sync-dot.orange { background:#e67e22; } .sync-dot.red { background:var(--red); }
+</style>
+</head>
+<body>
+
+<!-- AUTH SCREEN -->
+<div id="screen-gauth" class="screen active" style="min-height:100vh;display:flex;align-items:center;justify-content:center;">
+  <div class="gauth-card">
+    <div class="gauth-icon">🕐</div>
+    <div class="gauth-title">Staff Time Clock</div>
+    <div class="gauth-sub">Sign in with Google to sync your timeclock data across all devices.</div>
+    <button class="google-btn" id="signin-btn" onclick="signIn()">
+      <svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      Sign in with Google
+    </button>
+    <div id="gauth-status" style="margin-top:14px;font-size:13px;color:var(--text2);min-height:20px"></div>
+    <div id="gauth-error" style="margin-top:6px;font-size:12px;color:var(--red);min-height:16px"></div>
+  </div>
+</div>
+
+<!-- CLOCK SCREEN -->
+<div id="screen-clock" class="screen">
+  <div class="page" style="display:flex;flex-direction:column;align-items:center;min-height:100vh;justify-content:center;padding-top:3rem;padding-bottom:3rem">
+    <div style="text-align:center;margin-bottom:2.5rem">
+      <div id="clock-date" style="font-size:14px;color:var(--text2);margin-bottom:6px"></div>
+      <div id="clock-time" style="font-size:48px;font-weight:500;letter-spacing:-2px"></div>
+    </div>
+    <div style="font-size:15px;font-weight:500;margin-bottom:1.5rem;color:var(--text2)">Tap your name to sign in or out</div>
+    <div id="staff-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;width:100%;max-width:600px"></div>
+    <div style="margin-top:3rem;display:flex;flex-direction:column;align-items:center;gap:10px">
+      <div id="session-warn" style="display:none;background:#E24B4A;color:#fff;border-radius:var(--radius);padding:10px 20px;font-size:13px;font-weight:500;text-align:center;cursor:pointer;max-width:400px" onclick="window.location.reload()">
+        ⚠ Session expired — tap here to refresh and sign in again
+      </div>
+      <div class="sync-bar"><span class="sync-dot" id="sync-dot"></span><span id="sync-text"></span></div>
+      <button class="btn btn-sm" onclick="showScreen('screen-pin')" style="color:var(--text2)">Management</button>
+    </div>
+  </div>
+</div>
+
+<!-- PIN SCREEN -->
+<div id="screen-pin" class="screen">
+  <div class="page" style="display:flex;align-items:center;justify-content:center;min-height:100vh">
+    <div class="card" style="width:100%;max-width:340px;padding:2rem;text-align:center">
+      <div style="font-size:18px;font-weight:500;margin-bottom:6px">Management access</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:1.5rem">Enter your password to continue</div>
+      <input type="password" id="pin-input" placeholder="Password" style="width:100%;margin-bottom:10px" onkeydown="if(event.key==='Enter')checkPin()">
+      <div id="pin-error" style="font-size:12px;color:var(--red);margin-bottom:8px;min-height:16px"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn" style="flex:1" onclick="showScreen('screen-clock')">Cancel</button>
+        <button class="btn btn-primary" style="flex:1" onclick="checkPin()">Enter</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- REPORT SCREEN -->
+<div id="screen-mgmt" class="screen">
+  <div class="page">
+    <div class="topbar">
+      <div>
+        <div style="font-size:18px;font-weight:500">Hours report</div>
+        <div class="sync-bar" style="margin-top:4px"><span class="sync-dot" id="mgmt-sync-dot"></span><span id="mgmt-sync-text"></span></div>
+      </div>
+      <div class="topbar-actions">
+        <label style="font-size:12px;color:var(--text2)">Week of</label>
+        <input type="date" id="week-picker" onchange="renderReport()" style="font-size:12px;padding:5px 8px">
+        <button class="btn btn-sm" onclick="showScreen('screen-entries')">Edit entries</button>
+        <button class="btn btn-sm" onclick="showScreen('screen-staff')">Manage staff</button>
+        <button class="btn btn-sm" onclick="exportData()">⬇ Export</button>
+        <label class="btn btn-sm" style="cursor:pointer;margin:0">⬆ Import<input type="file" accept=".json" onchange="importData(event)" style="display:none"></label>
+        <button class="btn btn-sm" onclick="signOut()">Sign out</button>
+        <button class="btn btn-sm" onclick="showScreen('screen-clock')">Exit</button>
+      </div>
+    </div>
+    <div id="report-area"></div>
+  </div>
+</div>
+
+<!-- EDIT ENTRIES SCREEN -->
+<div id="screen-entries" class="screen">
+  <div class="page">
+    <div class="topbar">
+      <div style="font-size:18px;font-weight:500">Edit entries</div>
+      <div class="topbar-actions">
+        <label style="font-size:12px;color:var(--text2)">Week of</label>
+        <input type="date" id="entries-week-picker" onchange="renderEntries()" style="font-size:12px;padding:5px 8px">
+        <button class="btn btn-sm btn-primary" onclick="showAddRowModal()">+ Add entry</button>
+        <button class="btn btn-sm" onclick="showScreen('screen-mgmt')">Back to report</button>
+      </div>
+    </div>
+    <div id="entries-area"></div>
+  </div>
+</div>
+
+<!-- MANAGE STAFF SCREEN -->
+<div id="screen-staff" class="screen">
+  <div class="page">
+    <div class="topbar">
+      <div style="font-size:18px;font-weight:500">Manage staff</div>
+      <button class="btn btn-sm" onclick="showScreen('screen-mgmt')">Back to report</button>
+    </div>
+    <div class="card" style="margin-bottom:1rem">
+      <div class="card-header"><span style="font-size:13px;font-weight:500">Add new staff member</span></div>
+      <div style="padding:14px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <div style="flex:1;min-width:160px">
+          <label class="form-label" style="display:block;margin-bottom:4px">Full name</label>
+          <input type="text" id="new-staff-name" placeholder="e.g. Jordan" style="width:100%" onkeydown="if(event.key==='Enter')addStaff()">
+        </div>
+        <button class="btn btn-primary" onclick="addStaff()" style="height:36px;white-space:nowrap">Add staff member</button>
+      </div>
+      <div id="add-staff-error" style="font-size:12px;color:var(--red);padding:0 14px 10px;min-height:16px"></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span style="font-size:13px;font-weight:500">Current staff</span></div>
+      <div id="staff-list-mgmt"></div>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-top:10px">Staff marked inactive are hidden from the clock-in screen but their history is kept.</div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div id="modal-overlay" class="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div style="font-size:15px;font-weight:500;margin-bottom:1.25rem" id="modal-title">Add entry</div>
+    <div class="form-group">
+      <label class="form-label">Staff member</label>
+      <select id="ae-name" style="width:100%"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Date</label>
+      <input type="date" id="ae-date" style="width:100%">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Sign in</label>
+        <div class="time-stepper">
+          <div class="stepper-row"><button onclick="stepTime('in','h',1)">▲ hr</button><button onclick="stepTime('in','m',1)">▲ min</button></div>
+          <div class="stepper-display"><span id="in-h" class="step-val">--</span><span class="step-sep">:</span><span id="in-m" class="step-val">--</span></div>
+          <div class="stepper-row"><button onclick="stepTime('in','h',-1)">▼ hr</button><button onclick="stepTime('in','m',-1)">▼ min</button></div>
+        </div>
+        <input type="hidden" id="ae-in">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Sign out</label>
+        <div class="time-stepper">
+          <div class="stepper-row"><button onclick="stepTime('out','h',1)">▲ hr</button><button onclick="stepTime('out','m',1)">▲ min</button></div>
+          <div class="stepper-display"><span id="out-h" class="step-val">--</span><span class="step-sep">:</span><span id="out-m" class="step-val">--</span></div>
+          <div class="stepper-row"><button onclick="stepTime('out','h',-1)">▼ hr</button><button onclick="stepTime('out','m',-1)">▼ min</button></div>
+        </div>
+        <input type="hidden" id="ae-out">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:1.25rem">
+      <button class="btn" style="flex:1" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" id="ae-save-btn" onclick="saveEntry()">Save</button>
+    </div>
+    <div id="ae-delete-wrap" style="margin-top:8px;display:none">
+      <button class="btn btn-danger" style="width:100%" onclick="deleteEntry()">Delete this segment</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── CONFIG — paste your Client ID here ───────────────────────────────────
+const GOOGLE_CLIENT_ID = '907055001230-pscndmhf3rjbivs1l58fpths2qqnvv24.apps.googleusercontent.com';
+const DRIVE_FILE_NAME  = 'timeclock-data.json';
+const PIN = 'manager';
+const APP_URL = 'https://staff-timeclock.pages.dev/';
+// ──────────────────────────────────────────────────────────────────────────
+
+let staff=[], entries=[], dayBreaks={}, editingId=null;
+let currentWeekMonday=getWeekMonday(new Date());
+let entriesWeekMonday=getWeekMonday(new Date());
+let accessToken=null, driveFileId=null, saveTimeout=null;
+
+// ─── AUTH — redirect flow (no popup, works on all hosts) ─────────────────
+function signIn() {
+  if (GOOGLE_CLIENT_ID === 'YOUR_CLIENT_ID_HERE') {
+    document.getElementById('gauth-error').textContent = 'Please add your Google Client ID first.';
+    return;
+  }
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: APP_URL,
+    response_type: 'token',
+    scope: 'https://www.googleapis.com/auth/drive.file',
+    include_granted_scopes: 'true',
+    state: 'signin'
+  });
+  window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
+}
+
+function signOut() {
+  if (accessToken) fetch('https://oauth2.googleapis.com/revoke?token='+accessToken, {method:'POST'}).catch(()=>{});
+  accessToken=null; driveFileId=null;
+  localStorage.removeItem('tc_token'); localStorage.removeItem('tc_token_expiry');
+  history.replaceState(null,'',window.location.pathname);
+  showScreen('screen-gauth');
+}
+
+async function tryRestoreSession() {
+  const token=localStorage.getItem('tc_token');
+  const expiry=parseInt(localStorage.getItem('tc_token_expiry')||'0');
+  if (token && Date.now() < expiry-60000) {
+    accessToken=token;
+    document.getElementById('gauth-status').textContent='Restoring session...';
+    await loadFromDrive();
+    return true;
+  }
+  return false;
+}
+
+function handleAuthRedirect() {
+  const hash=window.location.hash.substring(1);
+  if (!hash) return false;
+  const params=new URLSearchParams(hash);
+  const token=params.get('access_token');
+  const expiresIn=params.get('expires_in');
+  const state=params.get('state');
+  if (token && state==='signin') {
+    accessToken=token;
+    localStorage.setItem('tc_token',token);
+    localStorage.setItem('tc_token_expiry',Date.now()+(parseInt(expiresIn)*1000));
+    history.replaceState(null,'',window.location.pathname);
+    return true;
+  }
+  return false;
+}
+
+// ─── DRIVE SYNC ───────────────────────────────────────────────────────────
+function setSyncStatus(state, text) {
+  ['sync-dot','mgmt-sync-dot'].forEach(id => {
+    const el = document.getElementById(id); if(!el) return;
+    el.className = 'sync-dot'+(state==='ok'?' green':state==='saving'?' orange':state==='error'?' red':'');
+  });
+  ['sync-text','mgmt-sync-text'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.textContent = text;
+  });
+}
+function setStatus(state, text) { setSyncStatus(state, text); }
+
+async function loadFromDrive() {
+  setSyncStatus('saving','Loading from Drive...');
+  const timeout = setTimeout(()=>{
+    document.getElementById('gauth-error').textContent = 'Timed out loading from Drive. Loading with local data.';
+    loadLocalFallback(); initApp();
+  }, 10000);
+  try {
+    const r1 = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name='${DRIVE_FILE_NAME}'+and+trashed=false&fields=files(id)&spaces=drive`,
+      { headers:{ Authorization:'Bearer '+accessToken } }
+    );
+    if (!r1.ok) throw new Error('List failed: '+r1.status+' '+await r1.text());
+    const list = await r1.json();
+    if (list.files && list.files.length > 0) {
+      driveFileId = list.files[0].id;
+      const r2 = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
+        { headers:{ Authorization:'Bearer '+accessToken } }
+      );
+      if (!r2.ok) throw new Error('Read failed: '+r2.status);
+      const data = await r2.json();
+      staff=data.staff||[]; entries=data.entries||[]; dayBreaks=data.dayBreaks||{};
+      // Always overwrite localStorage with Drive data so other browsers on same machine stay fresh
+      try { localStorage.setItem('tc_staff',JSON.stringify(staff)); localStorage.setItem('tc_entries',JSON.stringify(entries)); localStorage.setItem('tc_daybreaks',JSON.stringify(dayBreaks)); } catch(e){}
+    } else {
+      loadLocalFallback();
+      writeToDrive().catch(e=>console.warn('Initial write failed:',e));
+    }
+    entries.forEach(e=>{ if(e.breaks===undefined) e.breaks=e.break?1:0; });
+    clearTimeout(timeout);
+    setSyncStatus('ok','Synced with Google Drive');
+    initApp();
+  } catch(err) {
+    clearTimeout(timeout);
+    document.getElementById('gauth-error').textContent = 'Drive error: '+err.message;
+    loadLocalFallback();
+    setSyncStatus('error','Drive error — using local data');
+    initApp();
+  }
+}
+
+function loadLocalFallback() {
+  try { const s=localStorage.getItem('tc_staff'); if(s) staff=JSON.parse(s); } catch(e){}
+  try { const s=localStorage.getItem('tc_entries'); if(s) entries=JSON.parse(s); } catch(e){}
+  try { const s=localStorage.getItem('tc_daybreaks'); if(s) dayBreaks=JSON.parse(s); } catch(e){}
+  entries.forEach(e=>{ if(e.breaks===undefined) e.breaks=e.break?1:0; });
+  if (!staff.length) staff=[{name:'Max',active:true},{name:'Amy',active:true},{name:'Kayden',active:true},{name:'Samara',active:true},{name:'Tamika',active:true}];
+}
+
+async function writeToDrive() {
+  const payload = JSON.stringify({staff,entries,dayBreaks});
+  try { localStorage.setItem('tc_staff',JSON.stringify(staff)); localStorage.setItem('tc_entries',JSON.stringify(entries)); localStorage.setItem('tc_daybreaks',JSON.stringify(dayBreaks)); } catch(e){}
+  if (!accessToken) return;
+
+  // Check if token is expired before attempting save
+  const expiry = parseInt(localStorage.getItem('tc_token_expiry')||'0');
+  if (Date.now() > expiry - 30000) {
+    setSyncStatus('error', '⚠ Session expired — tap here to sign in again');
+    document.getElementById('sync-status').style.cursor = 'pointer';
+    document.getElementById('sync-status').onclick = () => { signOut(); };
+    document.getElementById('mgmt-sync-text') && (document.getElementById('mgmt-sync-text').parentElement.style.cursor='pointer');
+    return;
+  }
+
+  try {
+    const boundary='tc_b', meta=JSON.stringify({name:DRIVE_FILE_NAME,mimeType:'application/json'});
+    const body=`--${boundary}\r\nContent-Type: application/json\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${payload}\r\n--${boundary}--`;
+    const url = driveFileId
+      ? `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=multipart`
+      : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+    const res = await fetch(url,{method:driveFileId?'PATCH':'POST',headers:{Authorization:'Bearer '+accessToken,'Content-Type':`multipart/related; boundary=${boundary}`},body});
+    if (res.status === 401) {
+      // Token rejected by Google
+      setSyncStatus('error', '⚠ Session expired — tap to sign in again');
+      document.getElementById('sync-status').style.cursor = 'pointer';
+      document.getElementById('sync-status').onclick = () => { signOut(); };
+      return;
+    }
+    if (!driveFileId) { const d=await res.json(); driveFileId=d.id; }
+    setSyncStatus('ok','Saved · '+new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit',hour12:false}));
+  } catch(err) { setSyncStatus('error','Save failed — check connection'); }
+}
+
+function saveData() {
+  setSyncStatus('saving','Saving...');
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(writeToDrive, 800);
+}
+
+async function pollDrive() {
+  if (!accessToken||saveTimeout||!driveFileId) return;
+  try {
+    const r=await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,{headers:{Authorization:'Bearer '+accessToken}});
+    if(!r.ok) return;
+    const data=await r.json();
+    const inc=JSON.stringify({s:data.staff,e:data.entries,b:data.dayBreaks});
+    const cur=JSON.stringify({s:staff,e:entries,b:dayBreaks});
+    if(inc===cur) return;
+    staff=data.staff||staff; entries=data.entries||entries; dayBreaks=data.dayBreaks||{};
+    entries.forEach(e=>{if(e.breaks===undefined)e.breaks=e.break?1:0;});
+    const active=document.querySelector('.screen.active');
+    if(active){const id=active.id; if(id==='screen-clock')buildStaffGrid(); if(id==='screen-mgmt')renderReport(); if(id==='screen-entries')renderEntries();}
+    setSyncStatus('ok','Synced · '+new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit',hour12:false}));
+  } catch(e){}
+}
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────
+function initApp() {
+  buildStaffGrid();
+  document.getElementById('week-picker').value=toDateStr(currentWeekMonday);
+  document.getElementById('entries-week-picker').value=toDateStr(entriesWeekMonday);
+  showScreen('screen-clock');
+}
+function activeStaff(){return staff.filter(s=>s.active);}
+function allStaffNames(){return staff.map(s=>s.name);}
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  closeModal();
+  if(id==='screen-mgmt')renderReport();
+  if(id==='screen-entries')renderEntries();
+  if(id==='screen-staff')renderStaffList();
+  if(id==='screen-clock')buildStaffGrid();
+}
+function checkPin(){
+  const v=document.getElementById('pin-input').value;
+  document.getElementById('pin-error').textContent='';
+  if(v===PIN){document.getElementById('pin-input').value='';showScreen('screen-mgmt');}
+  else document.getElementById('pin-error').textContent='Incorrect password. Try again.';
+}
+function getWeekMonday(d){const dt=new Date(d),day=dt.getDay();dt.setDate(dt.getDate()+(day===0?-6:1-day));dt.setHours(0,0,0,0);return dt;}
+function fmtDate(d){return d.toLocaleDateString('en-AU',{weekday:'short',month:'short',day:'numeric'});}
+function fmtTime(ts){if(!ts)return '--:--';const d=new Date(ts);return d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit',hour12:false});}
+function fmtHours(mins){if(mins<=0)return '0h 0m';return Math.floor(mins/60)+'h '+String(mins%60).padStart(2,'0')+'m';}
+function timeInputToMs(dateStr,timeStr){const[h,m]=timeStr.split(':');const d=new Date(dateStr+'T00:00');d.setHours(+h,+m,0,0);return d.getTime();}
+function toDateStr(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+// segMins: cap at 24h to prevent wrong cross-day calculations
+// If out < in (sign-out recorded before sign-in time), treat as 0 to flag the error
+function segMins(e){
+  if(!e.in||!e.out) return 0;
+  const diff = Math.round((e.out-e.in)/60000);
+  if(diff < 0) return 0; // out is before in — bad entry, show as 0
+  return Math.min(diff, 24*60); // cap at 24h as a sanity check
+}
+function getWeekDays(monday){return Array.from({length:7},(_,i)=>{const d=new Date(monday);d.setDate(d.getDate()+i);return d;});}
+function getDayType(d){const day=d.getDay();if(day===6)return 'sat';if(day===0)return 'sun';return 'week';}
+function daySegments(name,ds){return entries.filter(e=>e.name===name&&e.in&&toDateStr(new Date(e.in))===ds).sort((a,b)=>a.in-b.in);}
+function getDayBreaks(name,ds){return(dayBreaks[name]&&dayBreaks[name][ds])||0;}
+function dayTotalMins(name,ds){return Math.max(0,daySegments(name,ds).reduce((s,e)=>s+segMins(e),0)-getDayBreaks(name,ds)*30);}
+function changeBreaks(name,ds,delta){
+  if(!dayBreaks[name])dayBreaks[name]={};
+  dayBreaks[name][ds]=Math.max(0,(dayBreaks[name][ds]||0)+delta);
+  saveData();renderEntries();
+}
+function updateClock(){
+  const now=new Date();
+  document.getElementById('clock-time').textContent=now.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+  document.getElementById('clock-date').textContent=now.toLocaleDateString('en-AU',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+}
+function buildStaffGrid(){
+  const grid=document.getElementById('staff-grid');grid.innerHTML='';
+  activeStaff().forEach(({name})=>{
+    const open=entries.filter(e=>e.name===name&&!e.out).sort((a,b)=>b.in-a.in)[0];
+    const todayMins=dayTotalMins(name,toDateStr(new Date()));
+    const now=Date.now();
+    const isStale = open && (now - open.in) > 16*3600000;
+    const card=document.createElement('div');
+    const borderColor = isStale ? '#E24B4A' : open ? 'var(--green)' : 'var(--border)';
+    card.style.cssText=`background:var(--bg);border:2px solid ${borderColor};border-radius:var(--radius-lg);padding:1.25rem 1rem;text-align:center;cursor:pointer;transition:background 0.15s`;
+    card.onmouseenter=()=>card.style.background='var(--bg2)';
+    card.onmouseleave=()=>card.style.background='var(--bg)';
+    const avatarBg = isStale ? 'var(--red)' : open ? 'var(--green)' : 'var(--bg3)';
+    const avatarColor = (isStale||open) ? '#fff' : 'var(--text2)';
+    const statusColor = isStale ? 'var(--red)' : open ? 'var(--green)' : 'var(--text2)';
+    const status = isStale
+      ? '⚠ Check sign-out'
+      : open ? 'In at '+fmtTime(open.in)
+      : (todayMins>0?'Today: '+fmtHours(todayMins):'Signed out');
+    card.innerHTML=`<div style="width:48px;height:48px;border-radius:50%;background:${avatarBg};display:flex;align-items:center;justify-content:center;font-weight:500;font-size:15px;color:${avatarColor};margin:0 auto 10px">${name.slice(0,2).toUpperCase()}</div>
+      <div style="font-size:14px;font-weight:500">${name}</div>
+      <div style="font-size:12px;color:${statusColor};margin-top:4px">${status}</div>`;
+    card.onclick=()=>handleTap(name);
+    grid.appendChild(card);
+  });
+}
+function handleTap(name){
+  const now = Date.now();
+  const open = entries.filter(e=>e.name===name&&!e.out).sort((a,b)=>b.in-a.in)[0];
+
+  if (open) {
+    const ageHours = (now - open.in) / 3600000;
+    if (ageHours > 16) {
+      // Entry is more than 16 hours old — almost certainly a forgotten sign-out
+      // Don't close it automatically. Start a fresh entry instead.
+      // The old one will show as "missing" in the report for manual correction.
+      entries.push({id:now+'_'+name+'_'+Math.random().toString(36).slice(2),name,in:now,out:null,breaks:0});
+    } else {
+      // Normal sign-out
+      open.out = now;
+    }
+  } else {
+    // Sign in
+    entries.push({id:now+'_'+name+'_'+Math.random().toString(36).slice(2),name,in:now,out:null,breaks:0});
+  }
+  saveData(); buildStaffGrid();
+}
+
+// ─── REPORT ───────────────────────────────────────────────────────────────
+function renderReport(){
+  const wp=document.getElementById('week-picker');
+  if(wp.value){currentWeekMonday=getWeekMonday(new Date(wp.value+'T12:00'));}else{wp.value=toDateStr(currentWeekMonday);}
+  const days=getWeekDays(currentWeekMonday);
+  const staffTotals={};allStaffNames().forEach(n=>staffTotals[n]={week:0,sat:0,sun:0});
+  let html='';
+  days.forEach(day=>{
+    const ds=toDateStr(day),dtype=getDayType(day);
+    const dayEntries=entries.filter(e=>e.in&&toDateStr(new Date(e.in))===ds).sort((a,b)=>a.in-b.in);
+    const byName={};dayEntries.forEach(e=>{(byName[e.name]=byName[e.name]||[]).push(e);});
+    let dayTotal=0;
+    Object.entries(byName).forEach(([name])=>{const m=dayTotalMins(name,ds);dayTotal+=m;if(staffTotals[name])staffTotals[name][dtype]+=m;});
+    html+=`<div class="card"><div class="card-header"><span style="font-size:13px;font-weight:500">${fmtDate(day)}</span><span style="font-size:12px;color:var(--text2)">Total: <strong>${fmtHours(dayTotal)}</strong></span></div>`;
+    if(!dayEntries.length){html+=`<div style="padding:10px 14px;font-size:13px;color:var(--text2);font-style:italic">No entries</div>`;}
+    else{
+      html+=`<table><thead><tr><th style="text-align:left">Staff</th><th class="text-center">In</th><th class="text-center">Out</th><th class="text-right">Segment</th><th class="text-right">Day total</th></tr></thead><tbody>`;
+      Object.entries(byName).forEach(([name,segs])=>{
+        const staffDay=dayTotalMins(name,ds),brks=getDayBreaks(name,ds);
+        segs.forEach((e,i)=>{
+          html+=`<tr><td class="fw-500" ${i>0?'style="color:var(--text2);font-weight:400"':''}>${i===0?name:'↳'}</td>
+            <td class="text-center">${fmtTime(e.in)}</td>
+            <td class="text-center ${!e.out?'text-red':(e.out<e.in?'text-red':'')}">${e.out?(e.out<e.in?'⚠ '+fmtTime(e.out):fmtTime(e.out)):'On shift'}</td>
+            <td class="text-right">${e.out?fmtHours(segMins(e)):'—'}</td>
+            <td class="text-right fw-500">${i===segs.length-1?`${fmtHours(staffDay)}${brks>0?`<div style="font-size:10px;color:var(--text2);font-weight:400">−${brks}×30min</div>`:''}`:''}</td></tr>`;
+        });
+      });
+      html+=`</tbody></table>`;
+    }
+    html+=`</div>`;
+  });
+  let wk=0,sat=0,sun=0;
+  allStaffNames().forEach(n=>{wk+=staffTotals[n].week;sat+=staffTotals[n].sat;sun+=staffTotals[n].sun;});
+  html+=`<div class="card"><div class="card-header"><span style="font-size:13px;font-weight:500">Weekly summary</span></div>
+    <table><thead><tr><th style="text-align:left">Staff member</th><th class="text-right">Mon–Fri</th><th class="text-right">Saturday</th><th class="text-right">Sunday</th><th class="text-right">Total</th></tr></thead><tbody>`;
+  allStaffNames().forEach(name=>{
+    const t=staffTotals[name],total=t.week+t.sat+t.sun;
+    html+=`<tr><td>${name}</td><td class="text-right">${t.week>0?fmtHours(t.week):'—'}</td><td class="text-right">${t.sat>0?fmtHours(t.sat):'—'}</td><td class="text-right">${t.sun>0?fmtHours(t.sun):'—'}</td><td class="text-right fw-500">${total>0?fmtHours(total):'—'}</td></tr>`;
+  });
+  html+=`<tr style="background:var(--bg2);border-top:1px solid var(--border2)"><td class="fw-500">Total</td><td class="text-right fw-500">${wk>0?fmtHours(wk):'—'}</td><td class="text-right fw-500">${sat>0?fmtHours(sat):'—'}</td><td class="text-right fw-500">${sun>0?fmtHours(sun):'—'}</td><td class="text-right fw-500">${fmtHours(wk+sat+sun)}</td></tr>
+  </tbody></table></div>`;
+  document.getElementById('report-area').innerHTML=html;
+}
+
+// ─── ENTRIES ──────────────────────────────────────────────────────────────
+function renderEntries(){
+  const wp=document.getElementById('entries-week-picker');
+  if(wp.value){entriesWeekMonday=getWeekMonday(new Date(wp.value+'T12:00'));}else{wp.value=toDateStr(entriesWeekMonday);}
+  const days=getWeekDays(entriesWeekMonday);
+  const activeNames=activeStaff().map(s=>s.name);
+  let html='';
+  activeNames.forEach(name=>{
+    const weekMins=days.reduce((sum,day)=>sum+dayTotalMins(name,toDateStr(day)),0);
+    html+=`<div class="card"><div class="card-header">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:34px;height:34px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:500;color:#fff">${name.slice(0,2).toUpperCase()}</div>
+        <span style="font-size:14px;font-weight:500">${name}</span>
+      </div>
+      <span style="font-size:12px;color:var(--text2)">Week total: <strong style="color:var(--text)">${fmtHours(weekMins)}</strong></span>
+    </div>
+    <table><thead><tr>
+      <th style="text-align:left;width:95px">Day</th>
+      <th class="text-center">In</th><th class="text-center">Out</th>
+      <th class="text-right">Segment</th><th class="text-center">Breaks</th><th class="text-right">Day total</th>
+      <th style="width:90px"></th>
+    </tr></thead><tbody>`;
+    days.forEach(day=>{
+      const ds=toDateStr(day),segs=daySegments(name,ds),brks=getDayBreaks(name,ds);
+      if(!segs.length){
+        html+=`<tr class="seg-row"><td class="text-muted">${fmtDate(day)}</td><td class="text-center text-muted">—</td><td class="text-center text-muted">—</td><td class="text-right text-muted">—</td><td></td><td class="text-right text-muted">—</td>
+          <td class="text-right"><button class="btn btn-sm" onclick="openAddModalForDay('${name}','${ds}')" style="font-size:11px;padding:3px 8px;color:var(--text2)">+ Add</button></td></tr>`;
+      } else {
+        segs.forEach((e,i)=>{
+          const eid=e.id,isLast=i===segs.length-1,missingOut=!e.out;
+          const rb=(field)=>`<div style="display:flex;align-items:center;justify-content:center;gap:3px">
+            <button class="break-btn" onclick="roundEntryTime('${eid}','${field}','down')" style="font-size:10px;padding:2px 5px">←</button>
+            <span style="min-width:34px;text-align:center;font-weight:500;font-size:12px">${field==='in'?fmtTime(e.in):fmtTime(e.out)}</span>
+            <button class="break-btn" onclick="roundEntryTime('${eid}','${field}','up')" style="font-size:10px;padding:2px 5px">→</button>
+          </div>`;
+          html+=`<tr class="seg-row">
+            <td class="text-muted">${i===0?fmtDate(day):''}</td>
+            <td class="text-center">${rb('in')}</td>
+            <td class="text-center ${missingOut?'text-red':''}">${missingOut?'<span style="font-size:12px">On shift</span>':rb('out')}</td>
+            <td class="text-right" style="font-size:12px">${e.out?fmtHours(segMins(e)):'—'}</td>
+            <td class="text-center">${isLast?`<div style="display:flex;align-items:center;justify-content:center;gap:4px">
+              <button class="break-btn" onclick="changeBreaks('${name}','${ds}',-1)" ${brks===0?'disabled':''} style="font-size:10px;padding:2px 6px">−</button>
+              <span style="min-width:18px;text-align:center;font-size:12px;font-weight:500">${brks}</span>
+              <button class="break-btn" onclick="changeBreaks('${name}','${ds}',1)" style="font-size:10px;padding:2px 6px">+</button>
+            </div>`:''}
+            </td>
+            <td class="text-right fw-500">${isLast?`${fmtHours(dayTotalMins(name,ds))}${brks>0?`<div style="font-size:10px;color:var(--text2);font-weight:400">−${brks}×30min</div>`:''}`:''}</td>
+            <td class="text-right" style="white-space:nowrap">
+              <button class="btn btn-sm" onclick="openEditModal('${eid}')" style="font-size:11px;padding:3px 6px">Edit</button>
+              ${isLast?`<button class="btn btn-sm" onclick="openAddModalForDay('${name}','${ds}')" style="font-size:11px;padding:3px 6px;color:var(--green);margin-left:2px">+</button>`:''}
+            </td></tr>`;
+        });
+      }
+    });
+    html+='</tbody></table></div>';
+  });
+  document.getElementById('entries-area').innerHTML=html||'<div style="font-size:13px;color:var(--text2);padding:1rem 0">No active staff.</div>';
+}
+
+function roundEntryTime(id,field,dir){
+  const e=entries.find(x=>x.id===id);if(!e)return;
+  const ts=field==='in'?e.in:e.out;if(!ts)return;
+  const d=new Date(ts),mins=d.getHours()*60+d.getMinutes();
+  let nm=dir==='down'?(Math.floor(mins/15)*15===mins?mins-15:Math.floor(mins/15)*15):(Math.ceil(mins/15)*15===mins?mins+15:Math.ceil(mins/15)*15);
+  nm=Math.max(0,Math.min(nm,23*60+59));
+  d.setHours(Math.floor(nm/60),nm%60,0,0);
+  if(field==='in')e.in=d.getTime();else e.out=d.getTime();
+  saveData();renderEntries();
+}
+
+// ─── MODAL ────────────────────────────────────────────────────────────────
+function closeModal(){document.getElementById('modal-overlay').classList.remove('open');}
+function openModal(){document.getElementById('modal-overlay').classList.add('open');}
+function populateNameSelect(sel){document.getElementById('ae-name').innerHTML=staff.map(s=>`<option value="${s.name}" ${s.name===sel?'selected':''}>${s.name}</option>`).join('');}
+const stepState={in:{h:null,m:null},out:{h:null,m:null}};
+function setStepperDisplay(field){
+  const s=stepState[field];
+  document.getElementById(field+'-h').textContent=s.h!==null?String(s.h).padStart(2,'0'):'--';
+  document.getElementById(field+'-m').textContent=s.m!==null?String(s.m).padStart(2,'0'):'--';
+  document.getElementById('ae-'+field).value=(s.h!==null&&s.m!==null)?String(s.h).padStart(2,'0')+':'+String(s.m).padStart(2,'0'):'';
+}
+function initStepper(field,timeStr){
+  if(timeStr){const[h,m]=timeStr.split(':').map(Number);stepState[field]={h,m};}
+  else stepState[field]={h:null,m:null};
+  setStepperDisplay(field);
+}
+function stepTime(field,part,delta){
+  const s=stepState[field];if(s.h===null){s.h=8;s.m=0;}
+  if(part==='h')s.h=(s.h+delta+24)%24;
+  if(part==='m'){s.m+=delta;if(s.m>=60){s.m=0;s.h=(s.h+1)%24;}if(s.m<0){s.m=59;s.h=(s.h-1+24)%24;}}
+  setStepperDisplay(field);
+}
+function showAddRowModal(){
+  editingId=null;populateNameSelect(null);
+  document.getElementById('ae-date').value=document.getElementById('entries-week-picker').value||toDateStr(new Date());
+  initStepper('in','');initStepper('out','');
+  document.getElementById('ae-delete-wrap').style.display='none';
+  document.getElementById('modal-title').textContent='Add shift segment';
+  document.getElementById('ae-save-btn').textContent='Save';
+  openModal();
+}
+function openAddModalForDay(name,ds){
+  editingId=null;populateNameSelect(name);
+  document.getElementById('ae-date').value=ds;
+  initStepper('in','');initStepper('out','');
+  document.getElementById('ae-delete-wrap').style.display='none';
+  document.getElementById('modal-title').textContent='Add segment for '+name;
+  document.getElementById('ae-save-btn').textContent='Save';
+  openModal();
+}
+function openEditModal(id){
+  const e=entries.find(x=>x.id===id);if(!e)return;
+  editingId=id;populateNameSelect(e.name);
+  const inDate=new Date(e.in);
+  document.getElementById('ae-date').value=toDateStr(inDate);
+  initStepper('in',inDate.toTimeString().slice(0,5));
+  initStepper('out',e.out?new Date(e.out).toTimeString().slice(0,5):'');
+  document.getElementById('ae-delete-wrap').style.display='block';
+  document.getElementById('modal-title').textContent='Edit shift segment';
+  document.getElementById('ae-save-btn').textContent='Update';
+  openModal();
+}
+function saveEntry(){
+  const name=document.getElementById('ae-name').value,dateStr=document.getElementById('ae-date').value;
+  const inTime=document.getElementById('ae-in').value,outTime=document.getElementById('ae-out').value;
+  if(!dateStr||!inTime){alert('Please fill in at least a date and sign-in time.');return;}
+  const inMs=timeInputToMs(dateStr,inTime),outMs=outTime?timeInputToMs(dateStr,outTime):null;
+  if(editingId){const e=entries.find(x=>x.id===editingId);if(e){e.name=name;e.in=inMs;e.out=outMs;}}
+  else entries.push({id:Date.now()+'_'+name+'_'+Math.random().toString(36).slice(2),name,in:inMs,out:outMs,breaks:0});
+  saveData();closeModal();renderEntries();
+}
+function deleteEntry(){
+  if(!editingId)return;if(!confirm('Delete this shift segment?'))return;
+  entries=entries.filter(x=>x.id!==editingId);
+  saveData();editingId=null;closeModal();renderEntries();
+}
+
+// ─── STAFF ────────────────────────────────────────────────────────────────
+function renderStaffList(){
+  const el=document.getElementById('staff-list-mgmt');
+  if(!staff.length){el.innerHTML='<div style="padding:14px;font-size:13px;color:var(--text2);font-style:italic">No staff added yet.</div>';return;}
+  el.innerHTML='<table>'+staff.map((s,i)=>`<tr>
+    <td class="fw-500">${s.name}</td>
+    <td class="text-center"><span class="badge ${s.active?'badge-active':'badge-inactive'}">${s.active?'Active':'Inactive'}</span></td>
+    <td class="text-right">
+      <button class="btn btn-sm" onclick="toggleStaffActive(${i})" style="font-size:11px;padding:4px 8px">${s.active?'Set inactive':'Set active'}</button>
+      <button class="btn btn-sm" onclick="removeStaff(${i})" style="font-size:11px;padding:4px 8px;margin-left:4px;color:var(--red)">Remove</button>
+    </td></tr>`).join('')+'</table>';
+}
+function addStaff(){
+  const input=document.getElementById('new-staff-name'),errEl=document.getElementById('add-staff-error');
+  const name=input.value.trim();errEl.textContent='';
+  if(!name){errEl.textContent='Please enter a name.';return;}
+  if(staff.find(s=>s.name.toLowerCase()===name.toLowerCase())){errEl.textContent='Already exists.';return;}
+  staff.push({name,active:true});saveData();input.value='';renderStaffList();buildStaffGrid();
+}
+function toggleStaffActive(i){staff[i].active=!staff[i].active;saveData();renderStaffList();buildStaffGrid();}
+function removeStaff(i){
+  const name=staff[i].name;
+  if(!confirm(entries.some(e=>e.name===name)?`${name} has entries. History kept. Continue?`:`Remove ${name}?`))return;
+  staff.splice(i,1);saveData();renderStaffList();buildStaffGrid();
+}
+
+// ─── EXPORT / IMPORT ──────────────────────────────────────────────────────
+function exportData(){
+  const blob=new Blob([JSON.stringify({staff,entries,dayBreaks},null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download='timeclock-backup-'+toDateStr(new Date())+'.json';a.click();URL.revokeObjectURL(url);
+}
+function importData(event){
+  const file=event.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const data=JSON.parse(e.target.result);
+      if(!data.staff||!data.entries)throw new Error('Invalid');
+      if(!confirm('Replace all data with imported file?'))return;
+      staff=data.staff;entries=data.entries;dayBreaks=data.dayBreaks||{};
+      entries.forEach(e=>{if(e.breaks===undefined)e.breaks=e.break?1:0;});
+      saveData();renderReport();alert('Imported!');
+    }catch(err){alert('Could not read file.');}
+    event.target.value='';
+  };
+  reader.readAsText(file);
+}
+
+// ─── SILENT TOKEN REFRESH ─────────────────────────────────────────────────
+// Refreshes the access token silently using a hidden iframe before it expires.
+// Google returns a new token in the iframe URL hash which we extract.
+function silentRefresh() {
+  return new Promise((resolve) => {
+    const params = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      redirect_uri: APP_URL,
+      response_type: 'token',
+      scope: 'https://www.googleapis.com/auth/drive.file',
+      include_granted_scopes: 'true',
+      prompt: 'none', // silent — no user interaction
+      state: 'silent'
+    });
+
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'display:none;width:0;height:0;position:absolute';
+    iframe.src = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
+
+    const timer = setTimeout(() => {
+      document.body.removeChild(iframe);
+      resolve(false);
+    }, 10000);
+
+    iframe.onload = () => {
+      try {
+        const hash = iframe.contentWindow.location.hash.substring(1);
+        const p = new URLSearchParams(hash);
+        const token = p.get('access_token');
+        const expiresIn = p.get('expires_in');
+        const state = p.get('state');
+        if (token && state === 'silent') {
+          accessToken = token;
+          localStorage.setItem('tc_token', token);
+          localStorage.setItem('tc_token_expiry', Date.now() + (parseInt(expiresIn) * 1000));
+          clearTimeout(timer);
+          document.body.removeChild(iframe);
+          resolve(true);
+          return;
+        }
+      } catch(e) {
+        // Cross-origin error means Google showed a login page (user not logged in)
+      }
+      clearTimeout(timer);
+      try { document.body.removeChild(iframe); } catch(e) {}
+      resolve(false);
+    };
+
+    document.body.appendChild(iframe);
+  });
+}
+updateClock();
+setInterval(updateClock,1000);
+setInterval(pollDrive,30000);
+window.addEventListener('focus',pollDrive);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pollDrive();});
+
+// Check token expiry every minute — silently refresh if close to expiry
+setInterval(async () => {
+  if (!accessToken || GOOGLE_CLIENT_ID === 'YOUR_CLIENT_ID_HERE') return;
+  const expiry = parseInt(localStorage.getItem('tc_token_expiry')||'0');
+  const minsLeft = Math.round((expiry - Date.now()) / 60000);
+
+  if (minsLeft <= 10) {
+    // Try silent refresh in background
+    setSyncStatus('saving', 'Refreshing session...');
+    const ok = await silentRefresh();
+    if (ok) {
+      setSyncStatus('ok', 'Session refreshed · '+new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit',hour12:false}));
+      const warn = document.getElementById('session-warn');
+      if (warn) warn.style.display = 'none';
+    } else {
+      // Silent refresh failed — user needs to sign in again
+      setSyncStatus('error', '⚠ Session expired — please refresh page');
+      const warn = document.getElementById('session-warn');
+      if (warn) warn.style.display = 'block';
+    }
+  }
+}, 60000);
+
+window.addEventListener('load', async () => {
+  if (GOOGLE_CLIENT_ID==='YOUR_CLIENT_ID_HERE') {
+    loadLocalFallback();
+    setSyncStatus('orange','Local-only mode — add Client ID for Drive sync');
+    initApp();
+    return;
+  }
+  const fromRedirect = handleAuthRedirect();
+  if (fromRedirect) {
+    document.getElementById('gauth-status').textContent = 'Signed in! Loading data...';
+    await loadFromDrive();
+    return;
+  }
+  const restored = await tryRestoreSession();
+  if (!restored) showScreen('screen-gauth');
+});
+</script>
+</body>
+</html>
