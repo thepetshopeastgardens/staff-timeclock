@@ -94,6 +94,9 @@
     <div style="font-size:15px;font-weight:500;margin-bottom:1.5rem;color:var(--text2)">Tap your name to sign in or out</div>
     <div id="staff-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;width:100%;max-width:600px"></div>
     <div style="margin-top:3rem;display:flex;flex-direction:column;align-items:center;gap:10px">
+      <div id="session-warn" style="display:none;background:#E24B4A;color:#fff;border-radius:var(--radius);padding:10px 20px;font-size:13px;font-weight:500;text-align:center;cursor:pointer;max-width:400px" onclick="window.location.reload()">
+        ⚠ Session expired — tap here to refresh and sign in again
+      </div>
       <div class="sync-bar"><span class="sync-dot" id="sync-dot"></span><span id="sync-text"></span></div>
       <button class="btn btn-sm" onclick="showScreen('screen-pin')" style="color:var(--text2)">Management</button>
     </div>
@@ -228,7 +231,7 @@
 const GOOGLE_CLIENT_ID = '907055001230-pscndmhf3rjbivs1l58fpths2qqnvv24.apps.googleusercontent.com';
 const DRIVE_FILE_NAME  = 'timeclock-data.json';
 const PIN = 'manager';
-const APP_URL = 'https://staff-timeclock.thepetshopeastgardens.workers.dev/';
+const APP_URL = 'https://staff-timeclock.pages.dev/';
 // ──────────────────────────────────────────────────────────────────────────
 
 let staff=[], entries=[], dayBreaks={}, editingId=null;
@@ -324,6 +327,8 @@ async function loadFromDrive() {
       if (!r2.ok) throw new Error('Read failed: '+r2.status);
       const data = await r2.json();
       staff=data.staff||[]; entries=data.entries||[]; dayBreaks=data.dayBreaks||{};
+      // Always overwrite localStorage with Drive data so other browsers on same machine stay fresh
+      try { localStorage.setItem('tc_staff',JSON.stringify(staff)); localStorage.setItem('tc_entries',JSON.stringify(entries)); localStorage.setItem('tc_daybreaks',JSON.stringify(dayBreaks)); } catch(e){}
     } else {
       loadLocalFallback();
       writeToDrive().catch(e=>console.warn('Initial write failed:',e));
@@ -353,6 +358,17 @@ async function writeToDrive() {
   const payload = JSON.stringify({staff,entries,dayBreaks});
   try { localStorage.setItem('tc_staff',JSON.stringify(staff)); localStorage.setItem('tc_entries',JSON.stringify(entries)); localStorage.setItem('tc_daybreaks',JSON.stringify(dayBreaks)); } catch(e){}
   if (!accessToken) return;
+
+  // Check if token is expired before attempting save
+  const expiry = parseInt(localStorage.getItem('tc_token_expiry')||'0');
+  if (Date.now() > expiry - 30000) {
+    setSyncStatus('error', '⚠ Session expired — tap here to sign in again');
+    document.getElementById('sync-status').style.cursor = 'pointer';
+    document.getElementById('sync-status').onclick = () => { signOut(); };
+    document.getElementById('mgmt-sync-text') && (document.getElementById('mgmt-sync-text').parentElement.style.cursor='pointer');
+    return;
+  }
+
   try {
     const boundary='tc_b', meta=JSON.stringify({name:DRIVE_FILE_NAME,mimeType:'application/json'});
     const body=`--${boundary}\r\nContent-Type: application/json\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${payload}\r\n--${boundary}--`;
@@ -360,15 +376,22 @@ async function writeToDrive() {
       ? `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=multipart`
       : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
     const res = await fetch(url,{method:driveFileId?'PATCH':'POST',headers:{Authorization:'Bearer '+accessToken,'Content-Type':`multipart/related; boundary=${boundary}`},body});
+    if (res.status === 401) {
+      // Token rejected by Google
+      setSyncStatus('error', '⚠ Session expired — tap to sign in again');
+      document.getElementById('sync-status').style.cursor = 'pointer';
+      document.getElementById('sync-status').onclick = () => { signOut(); };
+      return;
+    }
     if (!driveFileId) { const d=await res.json(); driveFileId=d.id; }
     setSyncStatus('ok','Saved · '+new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit',hour12:false}));
-  } catch(err) { setSyncStatus('error','Save failed'); }
+  } catch(err) { setSyncStatus('error','Save failed — check connection'); }
 }
 
 function saveData() {
   setSyncStatus('saving','Saving...');
   clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(()=>{ saveTimeout=null; writeToDrive(); }, 800);
+  saveTimeout = setTimeout(writeToDrive, 800);
 }
 
 async function pollDrive() {
@@ -418,7 +441,14 @@ function fmtTime(ts){if(!ts)return '--:--';const d=new Date(ts);return d.toLocal
 function fmtHours(mins){if(mins<=0)return '0h 0m';return Math.floor(mins/60)+'h '+String(mins%60).padStart(2,'0')+'m';}
 function timeInputToMs(dateStr,timeStr){const[h,m]=timeStr.split(':');const d=new Date(dateStr+'T00:00');d.setHours(+h,+m,0,0);return d.getTime();}
 function toDateStr(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
-function segMins(e){if(!e.in||!e.out)return 0;return Math.max(0,Math.round((e.out-e.in)/60000));}
+// segMins: cap at 24h to prevent wrong cross-day calculations
+// If out < in (sign-out recorded before sign-in time), treat as 0 to flag the error
+function segMins(e){
+  if(!e.in||!e.out) return 0;
+  const diff = Math.round((e.out-e.in)/60000);
+  if(diff < 0) return 0; // out is before in — bad entry, show as 0
+  return Math.min(diff, 24*60); // cap at 24h as a sanity check
+}
 function getWeekDays(monday){return Array.from({length:7},(_,i)=>{const d=new Date(monday);d.setDate(d.getDate()+i);return d;});}
 function getDayType(d){const day=d.getDay();if(day===6)return 'sat';if(day===0)return 'sun';return 'week';}
 function daySegments(name,ds){return entries.filter(e=>e.name===name&&e.in&&toDateStr(new Date(e.in))===ds).sort((a,b)=>a.in-b.in);}
@@ -439,24 +469,47 @@ function buildStaffGrid(){
   activeStaff().forEach(({name})=>{
     const open=entries.filter(e=>e.name===name&&!e.out).sort((a,b)=>b.in-a.in)[0];
     const todayMins=dayTotalMins(name,toDateStr(new Date()));
+    const now=Date.now();
+    const isStale = open && (now - open.in) > 16*3600000;
     const card=document.createElement('div');
-    card.style.cssText=`background:var(--bg);border:2px solid ${open?'var(--green)':'var(--border)'};border-radius:var(--radius-lg);padding:1.25rem 1rem;text-align:center;cursor:pointer;transition:background 0.15s`;
+    const borderColor = isStale ? '#E24B4A' : open ? 'var(--green)' : 'var(--border)';
+    card.style.cssText=`background:var(--bg);border:2px solid ${borderColor};border-radius:var(--radius-lg);padding:1.25rem 1rem;text-align:center;cursor:pointer;transition:background 0.15s`;
     card.onmouseenter=()=>card.style.background='var(--bg2)';
     card.onmouseleave=()=>card.style.background='var(--bg)';
-    const status=open?'In at '+fmtTime(open.in):(todayMins>0?'Today: '+fmtHours(todayMins):'Signed out');
-    card.innerHTML=`<div style="width:48px;height:48px;border-radius:50%;background:${open?'var(--green)':'var(--bg3)'};display:flex;align-items:center;justify-content:center;font-weight:500;font-size:15px;color:${open?'#fff':'var(--text2)'};margin:0 auto 10px">${name.slice(0,2).toUpperCase()}</div>
+    const avatarBg = isStale ? 'var(--red)' : open ? 'var(--green)' : 'var(--bg3)';
+    const avatarColor = (isStale||open) ? '#fff' : 'var(--text2)';
+    const statusColor = isStale ? 'var(--red)' : open ? 'var(--green)' : 'var(--text2)';
+    const status = isStale
+      ? '⚠ Check sign-out'
+      : open ? 'In at '+fmtTime(open.in)
+      : (todayMins>0?'Today: '+fmtHours(todayMins):'Signed out');
+    card.innerHTML=`<div style="width:48px;height:48px;border-radius:50%;background:${avatarBg};display:flex;align-items:center;justify-content:center;font-weight:500;font-size:15px;color:${avatarColor};margin:0 auto 10px">${name.slice(0,2).toUpperCase()}</div>
       <div style="font-size:14px;font-weight:500">${name}</div>
-      <div style="font-size:12px;color:${open?'var(--green)':'var(--text2)'};margin-top:4px">${status}</div>`;
+      <div style="font-size:12px;color:${statusColor};margin-top:4px">${status}</div>`;
     card.onclick=()=>handleTap(name);
     grid.appendChild(card);
   });
 }
 function handleTap(name){
-  const open=entries.filter(e=>e.name===name&&!e.out).sort((a,b)=>b.in-a.in)[0];
-  const now=Date.now();
-  if(open){open.out=now;}
-  else{entries.push({id:now+'_'+name+'_'+Math.random().toString(36).slice(2),name,in:now,out:null,breaks:0});}
-  saveData();buildStaffGrid();
+  const now = Date.now();
+  const open = entries.filter(e=>e.name===name&&!e.out).sort((a,b)=>b.in-a.in)[0];
+
+  if (open) {
+    const ageHours = (now - open.in) / 3600000;
+    if (ageHours > 16) {
+      // Entry is more than 16 hours old — almost certainly a forgotten sign-out
+      // Don't close it automatically. Start a fresh entry instead.
+      // The old one will show as "missing" in the report for manual correction.
+      entries.push({id:now+'_'+name+'_'+Math.random().toString(36).slice(2),name,in:now,out:null,breaks:0});
+    } else {
+      // Normal sign-out
+      open.out = now;
+    }
+  } else {
+    // Sign in
+    entries.push({id:now+'_'+name+'_'+Math.random().toString(36).slice(2),name,in:now,out:null,breaks:0});
+  }
+  saveData(); buildStaffGrid();
 }
 
 // ─── REPORT ───────────────────────────────────────────────────────────────
@@ -481,7 +534,7 @@ function renderReport(){
         segs.forEach((e,i)=>{
           html+=`<tr><td class="fw-500" ${i>0?'style="color:var(--text2);font-weight:400"':''}>${i===0?name:'↳'}</td>
             <td class="text-center">${fmtTime(e.in)}</td>
-            <td class="text-center ${!e.out?'text-red':''}">${e.out?fmtTime(e.out):'On shift'}</td>
+            <td class="text-center ${!e.out?'text-red':(e.out<e.in?'text-red':'')}">${e.out?(e.out<e.in?'⚠ '+fmtTime(e.out):fmtTime(e.out)):'On shift'}</td>
             <td class="text-right">${e.out?fmtHours(segMins(e)):'—'}</td>
             <td class="text-right fw-500">${i===segs.length-1?`${fmtHours(staffDay)}${brks>0?`<div style="font-size:10px;color:var(--text2);font-weight:400">−${brks}×30min</div>`:''}`:''}</td></tr>`;
         });
@@ -689,12 +742,85 @@ function importData(event){
   reader.readAsText(file);
 }
 
-// ─── BOOT ─────────────────────────────────────────────────────────────────
+// ─── SILENT TOKEN REFRESH ─────────────────────────────────────────────────
+// Refreshes the access token silently using a hidden iframe before it expires.
+// Google returns a new token in the iframe URL hash which we extract.
+function silentRefresh() {
+  return new Promise((resolve) => {
+    const params = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      redirect_uri: APP_URL,
+      response_type: 'token',
+      scope: 'https://www.googleapis.com/auth/drive.file',
+      include_granted_scopes: 'true',
+      prompt: 'none', // silent — no user interaction
+      state: 'silent'
+    });
+
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'display:none;width:0;height:0;position:absolute';
+    iframe.src = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
+
+    const timer = setTimeout(() => {
+      document.body.removeChild(iframe);
+      resolve(false);
+    }, 10000);
+
+    iframe.onload = () => {
+      try {
+        const hash = iframe.contentWindow.location.hash.substring(1);
+        const p = new URLSearchParams(hash);
+        const token = p.get('access_token');
+        const expiresIn = p.get('expires_in');
+        const state = p.get('state');
+        if (token && state === 'silent') {
+          accessToken = token;
+          localStorage.setItem('tc_token', token);
+          localStorage.setItem('tc_token_expiry', Date.now() + (parseInt(expiresIn) * 1000));
+          clearTimeout(timer);
+          document.body.removeChild(iframe);
+          resolve(true);
+          return;
+        }
+      } catch(e) {
+        // Cross-origin error means Google showed a login page (user not logged in)
+      }
+      clearTimeout(timer);
+      try { document.body.removeChild(iframe); } catch(e) {}
+      resolve(false);
+    };
+
+    document.body.appendChild(iframe);
+  });
+}
 updateClock();
 setInterval(updateClock,1000);
 setInterval(pollDrive,30000);
 window.addEventListener('focus',pollDrive);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pollDrive();});
+
+// Check token expiry every minute — silently refresh if close to expiry
+setInterval(async () => {
+  if (!accessToken || GOOGLE_CLIENT_ID === 'YOUR_CLIENT_ID_HERE') return;
+  const expiry = parseInt(localStorage.getItem('tc_token_expiry')||'0');
+  const minsLeft = Math.round((expiry - Date.now()) / 60000);
+
+  if (minsLeft <= 10) {
+    // Try silent refresh in background
+    setSyncStatus('saving', 'Refreshing session...');
+    const ok = await silentRefresh();
+    if (ok) {
+      setSyncStatus('ok', 'Session refreshed · '+new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit',hour12:false}));
+      const warn = document.getElementById('session-warn');
+      if (warn) warn.style.display = 'none';
+    } else {
+      // Silent refresh failed — user needs to sign in again
+      setSyncStatus('error', '⚠ Session expired — please refresh page');
+      const warn = document.getElementById('session-warn');
+      if (warn) warn.style.display = 'block';
+    }
+  }
+}, 60000);
 
 window.addEventListener('load', async () => {
   if (GOOGLE_CLIENT_ID==='YOUR_CLIENT_ID_HERE') {
@@ -703,14 +829,12 @@ window.addEventListener('load', async () => {
     initApp();
     return;
   }
-  // Check if returning from Google OAuth redirect
   const fromRedirect = handleAuthRedirect();
   if (fromRedirect) {
     document.getElementById('gauth-status').textContent = 'Signed in! Loading data...';
     await loadFromDrive();
     return;
   }
-  // Try to restore saved session
   const restored = await tryRestoreSession();
   if (!restored) showScreen('screen-gauth');
 });
